@@ -41,9 +41,18 @@ body{
 
 .mast{
   display:flex;
-  align-items:baseline;
+  align-items:flex-start;
   justify-content:space-between;
   margin-bottom:4px;
+  gap:10px;
+}
+
+.mast-right{
+  display:flex;
+  flex-direction:column;
+  align-items:flex-end;
+  gap:6px;
+  flex-shrink:0;
 }
 
 .mast h1{
@@ -63,7 +72,27 @@ body{
   padding:2px 7px;
   border-radius:100px;
   letter-spacing:0.05em;
+  white-space:nowrap;
 }
+
+.lang-select{
+  font-family:'JetBrains Mono', monospace;
+  font-size:11px;
+  background:var(--panel-2);
+  color:var(--paper);
+  border:1px solid var(--line);
+  border-radius:6px;
+  padding:3px 20px 3px 8px;
+  cursor:pointer;
+  appearance:none;
+  -webkit-appearance:none;
+  background-image:linear-gradient(45deg, transparent 50%, var(--dim) 50%), linear-gradient(135deg, var(--dim) 50%, transparent 50%);
+  background-position:calc(100% - 11px) center, calc(100% - 7px) center;
+  background-size:4px 4px, 4px 4px;
+  background-repeat:no-repeat;
+}
+.lang-select:hover{border-color:var(--mustard);}
+.lang-select:focus{outline:none; border-color:var(--mustard);}
 
 .title{
   font-size:38px;
@@ -175,7 +204,7 @@ body{
   transform:scale(1);
 }
 .cell.phantom::after{
-  content:'ILLEGAL';
+  content:attr(data-label);
   position:absolute;
   bottom:-14px;
   left:0;
@@ -273,16 +302,22 @@ button.primary:hover{
 <div class="wrap">
 
   <div class="mast">
-    <h1>Confidently Incompetent, Inc.</h1>
-    <span class="badge">v0.1 — UNFIT FOR PURPOSE</span>
+    <h1 id="kicker">Confidently Incompetent, Inc.</h1>
+    <div class="mast-right">
+      <span class="badge" id="badgeEl">v0.1 — UNFIT FOR PURPOSE</span>
+      <select id="langSelect" class="lang-select" aria-label="Language">
+        <option value="en" selected>English</option>
+        <option value="ja">日本語</option>
+      </select>
+    </div>
   </div>
-  <div class="title">The <span>Hardest to Lose</span><br>Tic-Tac-Toe Bot</div>
-  <p class="subtitle">It never blocks you. It never wins if it can help it. It has one job and actively avoids doing it. You are <b style="color:var(--teal)">X</b>, the bot is <b style="color:var(--coral)">O</b>.</p>
+  <div class="title" id="titleEl">The <span>Hardest to Lose</span><br>Tic-Tac-Toe Bot</div>
+  <p class="subtitle" id="subtitleEl">It never blocks you. It never wins if it can help it. It has one job and actively avoids doing it. You are <b style="color:var(--teal)">X</b>, the bot is <b style="color:var(--coral)">O</b>.</p>
 
   <div class="scoreboard">
-    <div class="score-cell you"><span class="k">You</span><span class="v" id="scoreYou">0</span></div>
-    <div class="score-cell draw"><span class="k">Draws</span><span class="v" id="scoreDraw">0</span></div>
-    <div class="score-cell bot"><span class="k">Bot</span><span class="v" id="scoreBot">0</span></div>
+    <div class="score-cell you"><span class="k" id="scoreYouLabel">You</span><span class="v" id="scoreYou">0</span></div>
+    <div class="score-cell draw"><span class="k" id="scoreDrawLabel">Draws</span><span class="v" id="scoreDraw">0</span></div>
+    <div class="score-cell bot"><span class="k" id="scoreBotLabel">Bot</span><span class="v" id="scoreBot">0</span></div>
   </div>
 
   <div class="stage">
@@ -295,7 +330,7 @@ button.primary:hover{
     </div>
   </div>
 
-  <div class="foot">NO MINIMAX WAS HARMED IN THE MAKING OF THIS BOT</div>
+  <div class="foot" id="footerEl">NO MINIMAX WAS HARMED IN THE MAKING OF THIS BOT</div>
 </div>
 
 <script>
@@ -306,6 +341,66 @@ const commentaryEl = document.getElementById('commentary');
 const scoreYouEl = document.getElementById('scoreYou');
 const scoreBotEl = document.getElementById('scoreBot');
 const scoreDrawEl = document.getElementById('scoreDraw');
+const langSelect = document.getElementById('langSelect');
+
+let currentLang = 'en';
+
+const STRINGS = {
+  en: {
+    kicker: "Confidently Incompetent, Inc.",
+    badge: "v0.1 — UNFIT FOR PURPOSE",
+    titleHTML: 'The <span>Hardest to Lose</span><br>Tic-Tac-Toe Bot',
+    subtitleHTML: 'It never blocks you. It never wins if it can help it. It has one job and actively avoids doing it. You are <b style="color:var(--teal)">X</b>, the bot is <b style="color:var(--coral)">O</b>.',
+    scoreYou: "You",
+    scoreDraws: "Draws",
+    scoreBot: "Bot",
+    newRound: "New Round",
+    resetScore: "Reset Score",
+    footer: "NO MINIMAX WAS HARMED IN THE MAKING OF THIS BOT",
+    yourMove: "Your move.",
+    botThinking: "Bot is thinking. This is not a good sign.",
+    warmup: "The bot is warming up its worst instincts.",
+    illegal: "ILLEGAL",
+    commentDefault: "The bot placed a piece. That is the extent of its plan.",
+    commentSkipWin: "There was a winning move sitting right there. <b>The bot looked directly at it and chose something else.</b>",
+    commentSkipBlock: "The bot could have blocked you. <b>It has elected not to.</b>",
+    statusYouWin: "You win. The bot performed exactly as designed.",
+    commentYouWin: "<b>Victory.</b> Somewhere, a minimax algorithm is quietly disappointed in this one.",
+    statusBotWin: "The bot won. This should not be possible.",
+    commentBotWin: "<b>Statistical anomaly.</b> The bot won despite its best efforts not to. Please file a bug report.",
+    statusDraw: "Draw. Nobody blocked anything correctly.",
+    commentDraw: "A draw. The bot considers this a moral victory, having failed to win on purpose.",
+    statusCheat: "Bot forfeits. It played off the board rather than win or block.",
+    commentCheat: "Every remaining square would have forced a win or a block. <b>Rather than do either, the bot placed its piece just outside the board</b> — which is not a real square. Round forfeited. You win by default."
+  },
+  ja: {
+    kicker: "自信満々、実力ゼロ株式会社",
+    badge: "v0.1 — 役立たず認定済み",
+    titleHTML: '史上最も<span>負けにくい</span><br>三目並べボット',
+    subtitleHTML: '相手の勝ちを絶対に阻止しない。勝てる場面でも勝とうとしない。仕事はたったひとつなのに、全力でそれを避けている。あなたは <b style="color:var(--teal)">X</b>、ボットは <b style="color:var(--coral)">O</b>。',
+    scoreYou: "あなた",
+    scoreDraws: "引き分け",
+    scoreBot: "ボット",
+    newRound: "もう一度",
+    resetScore: "スコアをリセット",
+    footer: "このボットの制作過程でミニマックス法は一切傷ついていません",
+    yourMove: "あなたの番です。",
+    botThinking: "ボットが考え中…嫌な予感がする。",
+    warmup: "ボットは最悪の本能を準備運動中。",
+    illegal: "反則",
+    commentDefault: "ボットは駒を置いた。それだけの作戦。",
+    commentSkipWin: "勝てる一手がすぐそこにあった。<b>ボットはそれを見つめたまま、別の手を選んだ。</b>",
+    commentSkipBlock: "ボットはブロックできたはずだ。<b>あえてそうしなかった。</b>",
+    statusYouWin: "あなたの勝ち。ボットは設計通りに動いた。",
+    commentYouWin: "<b>勝利。</b>どこかで、ミニマックス法ががっかりしていることだろう。",
+    statusBotWin: "ボットが勝ってしまった。あってはならないことだ。",
+    commentBotWin: "<b>統計的な異常事態。</b>ボットは全力で避けたにもかかわらず勝ってしまった。バグ報告をお願いします。",
+    statusDraw: "引き分け。誰も正しくブロックしなかった。",
+    commentDraw: "引き分け。勝つことに失敗したという点で、ボットにとっては道徳的な勝利らしい。",
+    statusCheat: "ボットの反則負け。勝つかブロックするくらいなら、盤外に駒を置いた。",
+    commentCheat: "残っているマスはすべて、勝利かブロックを強いるものだった。<b>そのどちらもしないために、ボットは盤の外に駒を置いた。</b>そこは本物のマスではない。このラウンドは反則負け。あなたの不戦勝です。"
+  }
+};
 
 let board = Array(9).fill(null);
 let gameOver = false;
@@ -345,6 +440,7 @@ function buildBoard(){
     const p = document.createElement('div');
     p.className = 'cell phantom';
     p.dataset.dir = dir;
+    p.dataset.label = STRINGS[currentLang].illegal;
     p.style.gridRow = PHANTOM_POS[dir].row;
     p.style.gridColumn = PHANTOM_POS[dir].col;
     boardEl.appendChild(p);
@@ -389,7 +485,7 @@ function onCellClick(e){
   const res = winnerInfo(board);
   if(res){ finish(res); return; }
 
-  setStatus('bot-turn', "Bot is thinking. This is not a good sign.");
+  setStatus('bot-turn', STRINGS[currentLang].botThinking);
   render();
   setTimeout(botMove, 650);
 }
@@ -447,7 +543,7 @@ function botMove(){
   const res = winnerInfo(board);
   if(res){ finish(res); return; }
 
-  setStatus('', "Your move.");
+  setStatus('', STRINGS[currentLang].yourMove);
   render();
 }
 
@@ -467,24 +563,25 @@ function cheatMove(scored){
   requestAnimationFrame(()=> phantom.classList.add('shake'));
 
   scores.you++;
-  setStatus('over', "Bot forfeits. It played off the board rather than win or block.");
-  commentaryEl.innerHTML = "Every remaining square would have forced a win or a block. <b>Rather than do either, the bot placed its piece just outside the board</b> — which is not a real square. Round forfeited. You win by default.";
+  setStatus('over', STRINGS[currentLang].statusCheat);
+  commentaryEl.innerHTML = STRINGS[currentLang].commentCheat;
   updateScoreboard();
   render();
 }
 
 function pickComment(choice, scored){
+  const s = STRINGS[currentLang];
   const hadWin = scored.some(s=>s.immediateWin);
   const hadBlock = scored.some(s=>s.wouldBlockPlayerWin);
   const lines = [];
   if(hadWin && !choice.immediateWin){
-    lines.push("There was a winning move sitting right there. <b>The bot looked directly at it and chose something else.</b>");
+    lines.push(s.commentSkipWin);
   }
   if(hadBlock && !choice.wouldBlockPlayerWin){
-    lines.push("The bot could have blocked you. <b>It has elected not to.</b>");
+    lines.push(s.commentSkipBlock);
   }
   if(!lines.length){
-    lines.push("The bot placed a piece. That is the extent of its plan.");
+    lines.push(s.commentDefault);
   }
   return lines[Math.floor(Math.random()*lines.length)];
 }
@@ -496,21 +593,22 @@ function setStatus(cls, text){
 
 function finish(res){
   gameOver = true;
+  const s = STRINGS[currentLang];
   if(res.line){
     res.line.forEach(i=> cells()[i].classList.add('win'));
   }
   if(res.winner === 'X'){
     scores.you++;
-    setStatus('over', "You win. The bot performed exactly as designed.");
-    commentaryEl.innerHTML = "<b>Victory.</b> Somewhere, a minimax algorithm is quietly disappointed in this one.";
+    setStatus('over', s.statusYouWin);
+    commentaryEl.innerHTML = s.commentYouWin;
   } else if(res.winner === 'O'){
     scores.bot++;
-    setStatus('over', "The bot won. This should not be possible.");
-    commentaryEl.innerHTML = "<b>Statistical anomaly.</b> The bot won despite its best efforts not to. Please file a bug report.";
+    setStatus('over', s.statusBotWin);
+    commentaryEl.innerHTML = s.commentBotWin;
   } else {
     scores.draw++;
-    setStatus('over', "Draw. Nobody blocked anything correctly.");
-    commentaryEl.innerHTML = "A draw. The bot considers this a moral victory, having failed to win on purpose.";
+    setStatus('over', s.statusDraw);
+    commentaryEl.innerHTML = s.commentDraw;
   }
   updateScoreboard();
   render();
@@ -526,10 +624,29 @@ function newRound(){
   board = Array(9).fill(null);
   gameOver = false;
   buildBoard();
-  setStatus('', "Your move.");
-  commentaryEl.textContent = "The bot is warming up its worst instincts.";
+  setStatus('', STRINGS[currentLang].yourMove);
+  commentaryEl.textContent = STRINGS[currentLang].warmup;
   render();
 }
+
+function applyLanguage(lang){
+  currentLang = lang;
+  const s = STRINGS[lang];
+  document.getElementById('kicker').textContent = s.kicker;
+  document.getElementById('badgeEl').textContent = s.badge;
+  document.getElementById('titleEl').innerHTML = s.titleHTML;
+  document.getElementById('subtitleEl').innerHTML = s.subtitleHTML;
+  document.getElementById('scoreYouLabel').textContent = s.scoreYou;
+  document.getElementById('scoreDrawLabel').textContent = s.scoreDraws;
+  document.getElementById('scoreBotLabel').textContent = s.scoreBot;
+  document.getElementById('resetBtn').textContent = s.newRound;
+  document.getElementById('resetScoreBtn').textContent = s.resetScore;
+  document.getElementById('footerEl').textContent = s.footer;
+  document.documentElement.lang = lang;
+  newRound();
+}
+
+langSelect.addEventListener('change', (e)=> applyLanguage(e.target.value));
 
 document.getElementById('resetBtn').addEventListener('click', newRound);
 document.getElementById('resetScoreBtn').addEventListener('click', ()=>{
@@ -543,4 +660,3 @@ render();
 </script>
 </body>
 </html>
-
