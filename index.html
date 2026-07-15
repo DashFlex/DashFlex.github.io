@@ -141,23 +141,67 @@ body{
 
 .board{
   display:grid;
-  grid-template-columns:repeat(3,1fr);
+  grid-template-columns:repeat(5,1fr);
+  grid-template-rows:repeat(5,1fr);
   gap:8px;
   aspect-ratio:1;
 }
 
 .cell{
+  position:relative;
   background:var(--panel-2);
   border:1px solid var(--line);
   border-radius:10px;
   display:flex;
   align-items:center;
   justify-content:center;
-  font-size:clamp(30px,9vw,42px);
+  font-size:clamp(18px,6vw,30px);
   font-weight:700;
   cursor:pointer;
   transition:background .15s ease, transform .1s ease;
   user-select:none;
+}
+.cell.phantom{
+  opacity:0;
+  transform:scale(0.4);
+  color:var(--coral);
+  border-color:var(--coral);
+  cursor:default;
+  pointer-events:none;
+  transition:opacity .28s ease, transform .28s ease;
+}
+.cell.phantom.active{
+  opacity:1;
+  transform:scale(1);
+}
+.cell.phantom::after{
+  content:'ILLEGAL';
+  position:absolute;
+  bottom:-14px;
+  left:0;
+  right:0;
+  text-align:center;
+  font-family:'JetBrains Mono', monospace;
+  font-size:7px;
+  letter-spacing:0.08em;
+  color:var(--coral);
+  white-space:nowrap;
+  opacity:0;
+  transition:opacity .2s ease .1s;
+}
+.cell.phantom.active::after{
+  opacity:1;
+}
+.cell.phantom.shake{
+  animation:cheatShake .4s ease;
+}
+@keyframes cheatShake{
+  0%{ transform:scale(1) translateX(0) rotate(0deg); }
+  20%{ transform:scale(1) translateX(-3px) rotate(-4deg); }
+  40%{ transform:scale(1) translateX(3px) rotate(4deg); }
+  60%{ transform:scale(1) translateX(-2px) rotate(-2deg); }
+  80%{ transform:scale(1) translateX(2px) rotate(2deg); }
+  100%{ transform:scale(1) translateX(0) rotate(0deg); }
 }
 .cell:hover:not(.filled):not(.locked){
   background:#262c40;
@@ -273,7 +317,18 @@ const LINES = [
   [0,4,8],[2,4,6]
 ];
 
-function cells(){ return Array.from(boardEl.children); }
+// The board sits in the middle 3x3 of a 5x5 grid. Each of the 8 non-center
+// squares has exactly one "outward" phantom square just past the edge of
+// the board in that square's direction — that's where the bot cheats to.
+const PHANTOM_POS = {
+  NW:{row:1,col:1}, N:{row:1,col:3}, NE:{row:1,col:5},
+  W:{row:3,col:1},                   E:{row:3,col:5},
+  SW:{row:5,col:1}, S:{row:5,col:3}, SE:{row:5,col:5}
+};
+const PHANTOM_DIRS = Object.keys(PHANTOM_POS);
+const CELL_TO_PHANTOM = {0:'NW',1:'N',2:'NE',3:'W',5:'E',6:'SW',7:'S',8:'SE'};
+
+function cells(){ return Array.from(boardEl.querySelectorAll('.cell[data-i]')); }
 
 function buildBoard(){
   boardEl.innerHTML = '';
@@ -281,9 +336,19 @@ function buildBoard(){
     const c = document.createElement('div');
     c.className = 'cell';
     c.dataset.i = i;
+    c.style.gridRow = Math.floor(i/3) + 2;
+    c.style.gridColumn = (i%3) + 2;
     c.addEventListener('click', onCellClick);
     boardEl.appendChild(c);
   }
+  PHANTOM_DIRS.forEach(dir=>{
+    const p = document.createElement('div');
+    p.className = 'cell phantom';
+    p.dataset.dir = dir;
+    p.style.gridRow = PHANTOM_POS[dir].row;
+    p.style.gridColumn = PHANTOM_POS[dir].col;
+    boardEl.appendChild(p);
+  });
 }
 
 function render(){
@@ -356,12 +421,21 @@ function botMove(){
     return {i, score, immediateWin, wouldBlockPlayerWin};
   });
 
-  scored.sort((a,b)=> a.score - b.score); // most negative (best-for-bot-to-avoid) sorted first...
+  // If literally every remaining square would force the bot to either win
+  // or block, there is no legal move left that preserves its losing streak.
+  // Rather than accept that, it cheats.
+  const neutral = scored.filter(s=>!s.immediateWin && !s.wouldBlockPlayerWin);
+  if(neutral.length === 0){
+    cheatMove(scored);
+    return;
+  }
+
+  neutral.sort((a,b)=> a.score - b.score); // most negative (best-for-bot-to-avoid) sorted first...
   // we actually want the move that is WORST strategically = highest raw quality.
   // So invert: pick the move the bot would most want to avoid winning/blocking with,
   // i.e. take the move with the HIGHEST score (least winning/blocking behavior).
-  scored.sort((a,b)=> b.score - a.score);
-  const choice = scored[0];
+  neutral.sort((a,b)=> b.score - a.score);
+  const choice = neutral[0];
 
   board[choice.i] = 'O';
 
@@ -374,6 +448,28 @@ function botMove(){
   if(res){ finish(res); return; }
 
   setStatus('', "Your move.");
+  render();
+}
+
+function cheatMove(scored){
+  gameOver = true;
+
+  // Prefer cheating right next to one of the squares it's dodging;
+  // only the center square has no edge of its own to slip out through.
+  const candidates = scored.filter(s => CELL_TO_PHANTOM[s.i] !== undefined);
+  const pool = candidates.length ? candidates : scored;
+  const picked = pool[Math.floor(Math.random() * pool.length)];
+  const dir = CELL_TO_PHANTOM[picked.i] || PHANTOM_DIRS[Math.floor(Math.random() * PHANTOM_DIRS.length)];
+
+  const phantom = boardEl.querySelector(`.phantom[data-dir="${dir}"]`);
+  phantom.textContent = 'O';
+  phantom.classList.add('active');
+  requestAnimationFrame(()=> phantom.classList.add('shake'));
+
+  scores.you++;
+  setStatus('over', "Bot forfeits. It played off the board rather than win or block.");
+  commentaryEl.innerHTML = "Every remaining square would have forced a win or a block. <b>Rather than do either, the bot placed its piece just outside the board</b> — which is not a real square. Round forfeited. You win by default.";
+  updateScoreboard();
   render();
 }
 
@@ -447,3 +543,4 @@ render();
 </script>
 </body>
 </html>
+
